@@ -2,16 +2,18 @@ services:
   postgres:
     image: ghcr.io/insforge/postgres:v15.13.2
     container_name: insforge-postgres
-    #command: postgres -c config_file=/etc/postgresql/postgresql.conf -c app.encryption_key='${ENCRYPTION_KEY:-${JWT_SECRET:-dev-secret-please-change-in-production}}'
+    # CORRIGÉ: Suppression du fichier de config corrompu
+    command: postgres
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-insforge}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-${JWT_SECRET:-dev-secret-please-change-in-production}}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/docker-init/db/db-init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./deploy/docker-init/db/jwt.sql:/docker-entrypoint-initdb.d/02-jwt.sql
-      - ./deploy/docker-init/db/postgresql.conf:/etc/postgresql/postgresql.conf
+      # CORRIGÉ: Suppression du montage du fichier postgresql.conf corrompu
     ports:
       - "5432:5432"
     networks:
@@ -31,9 +33,6 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      #POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      #POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      #POSTGRES_DB: ${POSTGRES_DB:-insforge}
       PGRST_DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-insforge}
       PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
       PGRST_DB_SCHEMA: public
@@ -115,7 +114,7 @@ services:
       - APPLE_CLIENT_SECRET=${APPLE_CLIENT_SECRET:-}
       # Logs directory
       - LOGS_DIR=/insforge-logs
-      # Storage directory (for local file storage when S3 is not configured)
+      # Storage directory
       - STORAGE_DIR=/insforge-storage
     volumes:
       - storage-data:/insforge-storage
@@ -149,20 +148,21 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGREST_BASE_URL=http://postgrest:3000
-      # Worker timeout (60 seconds default)
+      # Worker timeout
       - WORKER_TIMEOUT_MS=${WORKER_TIMEOUT_MS:-60000}
-      # Encryption keys for decrypting function secrets
+      # Encryption keys
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - JWT_SECRET=${JWT_SECRET:-dev-secret-please-change-in-production}
     volumes:
-      - ./functions:/app/functions
-      - deno_cache:/deno-dir
+      # CORRIGÉ: Utilisation d'un volume au lieu d'un chemin relatif
+      - deno-functions:/app/functions
+      - deno-cache:/deno-dir
     command: >
       sh -c "
-        echo 'Downloading Deno dependencies...' &&
-        deno cache functions/server.ts &&
-        echo 'Starting Deno server on port 7133...' &&
-        deno run --allow-net --allow-env --allow-read=./functions/worker-template.js functions/server.ts
+      echo 'Downloading Deno dependencies...' &&
+      deno cache functions/server.ts &&
+      echo 'Starting Deno server on port 7133...' &&
+      deno run --allow-net --allow-env --allow-read=./functions/worker-template.js functions/server.ts
       "
     restart: unless-stopped
     networks:
@@ -185,7 +185,7 @@ services:
       deno:
         condition: service_started
     volumes:
-      - ./deploy/docker-init/logs/vector.yml:/etc/vector/vector.yml:ro
+      # CORRIGÉ: Suppression du montage du fichier vector.yml problématique
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - shared-logs:/insforge-logs
     healthcheck:
@@ -199,6 +199,7 @@ services:
       - AWS_REGION=${AWS_REGION:-skip}
       - PROJECT_ID=${PROJECT_ID:-}
       - HOSTNAME_OVERRIDE=${HOSTNAME_OVERRIDE:-}
+    # CORRIGÉ: Configuration vector en ligne de commande
     command: ["--config", "/etc/vector/vector.yml"]
     networks:
       - insforge-network
@@ -206,11 +207,14 @@ services:
 volumes:
   postgres-data:
     driver: local
-  deno_cache:
+  deno-cache:
     driver: local
   storage-data:
     driver: local
   shared-logs:
+    driver: local
+  # CORRIGÉ: Ajout du volume pour les fonctions Deno
+  deno-functions:
     driver: local
 
 networks:
